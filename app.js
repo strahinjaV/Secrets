@@ -2,6 +2,7 @@ const express = require("express")
 const bodyParser = require("body-parser")
 const ejs = require("ejs")
 const mongoose = require("mongoose")
+const encrypt = require("mongoose-encryption") //this is neat because it encrypts when you save data to a database(data.save()) but also decrypts automatically when you use find()
 
 const app = express()
 const PORT = "3000"
@@ -14,10 +15,13 @@ app.use(bodyParser.urlencoded({extended: true}))
 
 mongoose.connect(mongoose_con)
 
-const userSchema = {
+const userSchema = mongoose.Schema({
     email: String,
     password: String
-}
+})
+
+const secret = "Thisisourlittlesecret"
+userSchema.plugin(encrypt, {secret: secret, encryptedFields: ["password"]})
 
 User = new mongoose.model("User", userSchema)
 
