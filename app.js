@@ -10,8 +10,8 @@ const mongoose = require("mongoose")
 const session = require("express-session")
 const passport = require("passport")
 const passportLocalMongoose = require("passport-local-mongoose")
-const GoogleStrategy = require("passport-google-oauth20").Strategy
-const findOrCreate = require("mongoose-findorcreate")
+// const GoogleStrategy = require("passport-google-oauth20").Strategy
+// const findOrCreate = require("mongoose-findorcreate")
 
 const app = express()
 const PORT = "3000"
@@ -36,11 +36,12 @@ mongoose.connect(mongoose_con)
 
 const userSchema = mongoose.Schema({
     email: String,
-    password: String
+    password: String,
+    secret: String
 })
 
 userSchema.plugin(passportLocalMongoose) //this plugin will be doing the hashing and salting of the passwords
-userSchema.plugin(findOrCreate)
+// userSchema.plugin(findOrCreate)
 
 User = new mongoose.model("User", userSchema)
 
@@ -49,41 +50,59 @@ passport.serializeUser(function(user, done) {
     done(null, user.id)
 })
 passport.deserializeUser(function(id, done) {
-    User.findById(id, function(err, user) {
-        done(err, user)
-    })
+    User.findById(id)
+        .then(user => done(null, user))
+        .catch(err => done(err, null))
 })
 
-passport.use(new GoogleStrategy({
-    clientID: process.env.CLIENT_ID,
-    clientSecret: process.env.CLIENT_SECRET,
-    callbackURL: "http://localhost:3000/auth/google/secrets",
-    //userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo"  //this may or may not need to be in here beacuase this was necessary to add because at the time of the tutorial google+ was being shut down, and this redirected to another page to grab useer info rather than passport grabbing it from google+ which it used to do by defualt, however i am doing this in 2023 where passport is updated and google+ is long gone so i may comment it out completely
-  },
-  function(accessToken, refreshToken, profile, cb) {
-    console.log(profile)
-    User.findOrCreate({ googleId: profile.id }, function (err, user) {  //findorcreate is not an actual mongoose function but it was sudo code in the passport documentation (for a mongoose function to be made), however there is a npm package nameed mongoose-findorcreate which actually implements that function which we are going to use 
-      return cb(err, user);
-    });
-  }
-));
+// passport.use(new GoogleStrategy({
+//     clientID: process.env.CLIENT_ID,
+//     clientSecret: process.env.CLIENT_SECRET,
+//     callbackURL: "http://localhost:3000/auth/google/secrets",
+//     //userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo"  //this may or may not need to be in here beacuase this was necessary to add because at the time of the tutorial google+ was being shut down, and this redirected to another page to grab useer info rather than passport grabbing it from google+ which it used to do by defualt, however i am doing this in 2023 where passport is updated and google+ is long gone so i may comment it out completely
+//   },
+//   function(accessToken, refreshToken, profile, cb) {
+//     console.log(profile)
+//     User.findOne({googleId: profile.id}).then((user) => {
+
+//         if (!user){ //if there is no user found create one 
+//             const newuser = new User({
+//                 username: "",
+//                 password: "",
+//                 googleId: profile.id
+//             })
+
+//             newuser.save().then(() => {
+//                 return cb(err, user)
+//             }).catch((err) => {
+//                 console.log(err)
+//             })
+//         } else {
+//             //found a user 
+//             res.redirect("/secrets")
+//         }
+//     }).catch((err) => {
+//         console.log(err)
+//     })
+//   }
+// ))
 
 
 app.get("/", (req,res) => {
     res.render("home")
 })
 
-app.get("/auth/google",
-    passport.authenticate("google", {scope: ["profile"] })
-)
+// app.get("/auth/google",
+//     passport.authenticate("google", {scope: ["profile"] })
+// )
 
-app.get("/auth/google/secrets", 
-    passport.authenticate("google", { failureRedirect: "/login" }),
-    function(req, res) {
-        //successful authentication
-        res.redirect("/secrets")
-    }
-)
+// app.get("/auth/google/secrets", 
+//     passport.authenticate("google", { failureRedirect: "/login" }),
+//     function(req, res) {
+//         //successful authentication
+//         res.redirect("/secrets")
+//     }
+// )
 
 app.get("/login", (req,res) => {
     res.render("login")
@@ -94,8 +113,19 @@ app.get("/register", (req,res) => {
 })
 
 app.get("/secrets", (req, res) => {
-    if (req.isAuthenticated()){    //
-        res.render("secrets")
+    //looks through all users and finds the secrets field making sure to retrun only the ones that are not equal to null  ($ne: null)
+    User.find({"secret": {$ne: null}})
+        .then(foundUsers => {
+            res.render("secrets", {usersWithSecrets: foundUsers})
+        })
+        .catch(err => {
+            console.log(err)
+        })
+ })
+
+app.get("/submit", (req,res) => {
+    if (req.isAuthenticated()){    
+        res.render("submit")
     }else {
         res.redirect("/login")
     }
@@ -136,6 +166,28 @@ app.post("/login", (req,res) => {
         })
     }
    })
+})
+
+app.post("/submit", (req,res) => {
+    const submittedSecret = req.body.secret
+
+    //passport saves the users session details into the req variable 
+    User.findById(req.user.id)
+    .then(foundUser => {
+        if (foundUser) {
+            foundUser.secret = submittedSecret
+            foundUser.save()
+                     .then(() => {
+                        res.redirect("/secrets")
+                     })
+                     .catch(err => {
+                        console.log(err)
+                     })
+        }
+    })
+    .catch(err => {
+        console.log(error)
+    })
 })
 
 
